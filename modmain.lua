@@ -100,53 +100,50 @@ end
 -- DO NOT DELETE SAVE --
 if GetModConfigData("dont_delete_save") then
     -- Editing PlayerProfile:Save if called from HandleDeathCleanup
-    AddSimPostInit(function()
-        print("/AAT AddSimPostInit")
-        local PlayerProfile = GLOBAL.PlayerProfile
-        local orig_Save = PlayerProfile.Save
-        function PlayerProfile:Save(callback)
-            print("/AAT PlayerProfile:Save")
-            local handle_death = false
-            for i = 2, 10 do
-                local info = GLOBAL.debug.getinfo(i, "nS")
-                if info and info.name=="HandleDeathCleanup" then
-                    handle_death = true
-                    break
-                end
-            end
-
-            if handle_death and false then
-                print("/AAT called from HandleDeathCleanup, executing callback(true)")
-                callback(true)
-            else
-                print("/AAT not called from HandleDeathCleanup, executing original function")
-                orig_Save(self, callback)
+    local PlayerProfile = GLOBAL.PlayerProfile
+    local orig_Save = PlayerProfile.Save
+    function PlayerProfile:Save(callback)
+        print("/AAT PlayerProfile:Save")
+        local handle_death = false
+        for i = 2, 10 do
+            local info = GLOBAL.debug.getinfo(i, "nS")
+            if info and info.name=="HandleDeathCleanup" then
+                handle_death = true
+                break
             end
         end
 
-        -- Editing SaveIndex:EraseCurrent if called from HandleDeathCleanup
-        local SaveIndex = GLOBAL.SaveGameIndex
-        local orig_EraseCurrent = SaveIndex.EraseCurrent
-        function SaveIndex:EraseCurrent(cb, should_docaves)
-            print("/AAT SaveIndex:EraseCurrent")
-            local handle_death = false
-            for i = 2, 10 do
-                local info = GLOBAL.debug.getinfo(i, "nS")
-                if info and info.name=="HandleDeathCleanup" then
-                    handle_death = true
-                    break
-                end
-            end
+        if handle_death then
+            print("/AAT called from HandleDeathCleanup, executing callback(true)")
+			callback(true)
+        else
+            print("/AAT not called from HandleDeathCleanup, executing original function")
+            orig_Save(self, callback)
+        end
+    end
 
-            if handle_death and false then
-                print("/AAT called from HandleDeathCleanup, executing cb()")
-                cb()
-            else
-                print("/AAT not called from HandleDeathCleanup, executing original function")
-                orig_EraseCurrent(self, cb, should_docaves)
+    -- Editing SaveIndex:EraseCurrent if called from HandleDeathCleanup
+    local SaveIndex = GLOBAL.SaveIndex
+    local orig_EraseCurrent = SaveIndex.EraseCurrent
+    function SaveIndex:EraseCurrent(cb, should_docaves)
+        print("/AAT SaveIndex:EraseCurrent")
+        local handle_death = false
+        for i = 2, 10 do
+            local info = GLOBAL.debug.getinfo(i, "nS")
+            if info and info.name=="HandleDeathCleanup" then
+                handle_death = true
+                break
             end
         end
-    end)
+
+        if handle_death then
+            print("/AAT called from HandleDeathCleanup, executing cb()")
+			cb()
+        else
+            print("/AAT not called from HandleDeathCleanup, executing original function")
+            orig_EraseCurrent(self, cb, should_docaves)
+        end
+    end
 
     -- Editing DeathScreen class
     STRINGS.UI.DEATHSCREEN.MAINMENU = "Delete Save"
