@@ -5,19 +5,31 @@ local hasROG = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.REIGN_OF_GIANTS)
 local hasSHIP = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.CAPY_DLC)
 local hasPORK = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.PORKLAND_DLC)
 
+local DEBUG = false
+local _print = print
+local function dprint(...)
+    if DEBUG then
+        _print(...)
+    end
+end
+
+
 -- NO MOD WARNING --
 if GetModConfigData("mods_warning") then
+    dprint("/AAT enabling NO MOD WARNING")
     GLOBAL.getmetatable(GLOBAL.TheSim).__index.ShouldWarnModsLoaded = function() return false end
 end
 
 -- CAVE INSULATION --
 local cave_insulation = GetModConfigData("cave_insulation")
 if cave_insulation then
+    dprint("/AAT enabling CAVE INSULATION")
     TUNING.CAVE_INSULATION_BONUS = TUNING.SEG_TIME * cave_insulation
 end
 
 -- MEAT AND FLORAL REPAIR -- 
 if GetModConfigData("floral_repair") then
+    dprint("/AAT enabling MEAT AND FLORAL REPAIR")
     -- Inits adding repairable component
     local function HanaRepairInit(inst)
             inst:AddComponent("repairable")
@@ -90,6 +102,7 @@ end
 -- CLOSER PLACEMENT --
 local min_spacing = GetModConfigData("close_placement")
 if min_spacing then
+    dprint("/AAT enabling CLOSER PLACEMENT")
     AddGamePostInit(function()
         for _, v in pairs(GLOBAL.GetAllRecipes()) do
             v.min_spacing = min_spacing
@@ -99,11 +112,12 @@ end
 
 -- DO NOT DELETE SAVE --
 if GetModConfigData("dont_delete_save") then
+    dprint("/AAT enabling DO NOT DELETE SAVE")
     -- Editing PlayerProfile:Save if called from HandleDeathCleanup
     local PlayerProfile = GLOBAL.PlayerProfile
     local orig_Save = PlayerProfile.Save
     function PlayerProfile:Save(callback)
-        print("/AAT PlayerProfile:Save")
+        dprint("/AAT PlayerProfile:Save")
         local handle_death = false
         for i = 2, 10 do
             local info = GLOBAL.debug.getinfo(i, "nS")
@@ -114,10 +128,10 @@ if GetModConfigData("dont_delete_save") then
         end
 
         if handle_death then
-            print("/AAT called from HandleDeathCleanup, executing callback(true)")
+            dprint("/AAT called from HandleDeathCleanup, executing callback(true)")
 			callback(true)
         else
-            print("/AAT not called from HandleDeathCleanup, executing original function")
+            dprint("/AAT not called from HandleDeathCleanup, executing original function")
             orig_Save(self, callback)
         end
     end
@@ -126,7 +140,7 @@ if GetModConfigData("dont_delete_save") then
     local SaveIndex = GLOBAL.SaveIndex
     local orig_EraseCurrent = SaveIndex.EraseCurrent
     function SaveIndex:EraseCurrent(cb, should_docaves)
-        print("/AAT SaveIndex:EraseCurrent")
+        dprint("/AAT SaveIndex:EraseCurrent")
         local handle_death = false
         for i = 2, 10 do
             local info = GLOBAL.debug.getinfo(i, "nS")
@@ -137,10 +151,10 @@ if GetModConfigData("dont_delete_save") then
         end
 
         if handle_death then
-            print("/AAT called from HandleDeathCleanup, executing cb()")
+            dprint("/AAT called from HandleDeathCleanup, executing cb()")
 			cb()
         else
-            print("/AAT not called from HandleDeathCleanup, executing original function")
+            dprint("/AAT not called from HandleDeathCleanup, executing original function")
             orig_EraseCurrent(self, cb, should_docaves)
         end
     end
@@ -150,9 +164,9 @@ if GetModConfigData("dont_delete_save") then
     STRINGS.UI.DEATHSCREEN.RETRY = "Reload"
 
     AddClassPostConstruct("screens/deathscreen", function(self)
-
         -- Replacing DeathScreen:OnMenu
         function self:OnMenu(escaped)
+            dprint("/AAT DeathScreen:OnMenu")
             self.menu:Disable()
             GLOBAL.TheFrontEnd:Fade(false, 2, function()
                 if escaped then
@@ -177,6 +191,7 @@ if GetModConfigData("dont_delete_save") then
 
         -- Replacing DeathScreen:OnRetry
         function self:OnRetry()
+            dprint("/AAT DeathScreen:OnRetry")
             GLOBAL.StartNextInstance({reset_action=GLOBAL.RESET_ACTION.LOAD_SLOT, save_slot=GLOBAL.SaveGameIndex:GetCurrentSaveSlot()}, true)
         end
     end)
@@ -185,9 +200,11 @@ end
 -- ATTACKS RESET --
 local reset_attack_days = GetModConfigData("attacks_reset")
 if reset_attack_days then
-    -- Replace Houded:CalcEscalationLevel
+    dprint("/AAT enabling ATTACKS RESET")
+    -- Replace Hounded:CalcEscalationLevel
     AddComponentPostInit("hounded", function(inst)
         function inst:CalcEscalationLevel()
+            dprint("/AAT Hounded:CalcEscalationLevel")
             local day = GLOBAL.GetClock():GetNumCycles()
             day = day % reset_attack_days
             if day < 10 then
@@ -216,9 +233,10 @@ if reset_attack_days then
 
     -- Replace FrogRain ListenForEvent "rainstart"
     AddPrefabPostInit("forest", function(inst)
+        dprint("/AAT forest PostInit")
         local FrogRain = inst.components.frograin
         if not FrogRain then return end
-        FrogRain.frogcap = math.huge  -- Remove frog cap
+        FrogRain.frogcap = 9007199254740991    -- Remove frog cap
         local function FrogRainListener()
             if GLOBAL.SaveGameIndex:GetCurrentMode() ~= "adventure" then
                 local day = GLOBAL.GetClock():GetNumCycles()
@@ -260,6 +278,7 @@ if reset_attack_days then
     AddComponentPostInit("periodicthreat", function(inst)
         local orig_AddThreat = inst.AddThreat
         function inst:AddThreat(name, data)
+            dprint("/AAT PeriodicThreat:AddThreat")
             if name == "WORM" then
                 data.waittime = function(dat)
                     --The older the world, the more often the attacks.
@@ -308,6 +327,7 @@ if reset_attack_days then
     -- Replace Batted:GetAddTime()
     AddComponentPostInit("batted", function(inst)
         function inst:GetAddTime()
+            dprint("/AAT Batted:GetAddTime")
             local day = GLOBAL.GetClock().numcycles
             day = day % reset_attack_days
             local time = 130
@@ -331,8 +351,9 @@ if reset_attack_days then
     end)
 end
 
--- F5/F9 Save/Load
+-- F5 SAVE / F9 LOAD --
 if GetModConfigData("save_load") then
+    dprint("/AAT enabling F5 SAVE / F9 LOAD")
     STRINGS.UI.SAVELOAD = {}
     STRINGS.UI.SAVELOAD.SAVETITLE = "Quicksave"
     STRINGS.UI.SAVELOAD.SAVEBODY = "Do you want to save the game?"
@@ -340,7 +361,6 @@ if GetModConfigData("save_load") then
     STRINGS.UI.SAVELOAD.LOADBODY = "Do you want to reload the latest save?"
 
     AddSimPostInit(function()
-
         local function exit()
             GLOBAL.TheFrontEnd:PopScreen()
             GLOBAL.SetPause(false)
@@ -352,6 +372,7 @@ if GetModConfigData("save_load") then
 
         -- F5 Save
 	    GLOBAL.TheInput:AddKeyDownHandler(GLOBAL.KEY_F5, function()
+            dprint("/AAT F5 quicksaving")
 		    if GLOBAL.inGamePlay and GLOBAL.GetPlayer() and not GLOBAL.IsPaused() then
                 GLOBAL.SetPause(true)
                 local PopupDialogScreen = GLOBAL.require("screens/popupdialog")
@@ -371,6 +392,7 @@ if GetModConfigData("save_load") then
 
         -- F9 Load
         GLOBAL.TheInput:AddKeyDownHandler(GLOBAL.KEY_F9, function()
+            dprint("/AAT F9 quicksaving")
 		    if GLOBAL.inGamePlay and GLOBAL.GetPlayer() and not GLOBAL.IsPaused() then
                 GLOBAL.SetPause(true)
                 local PopupDialogScreen = GLOBAL.require("screens/popupdialog")
@@ -396,8 +418,10 @@ if GetModConfigData("save_load") then
 	end)
 end
 
+-- BOOMERANG CATCH --
 local boomerang_catch = GetModConfigData("boomerang_catch")
 if boomerang_catch then
+    dprint("/AAT enabling BOOMERANG CATCH")
     AddPrefabPostInit("boomerang", function(inst)
         local orig_Hit = inst.components.projectile.Hit
         local orig_OnUpdate = inst.components.projectile.OnUpdate
@@ -406,7 +430,9 @@ if boomerang_catch then
         local speed_threshold = 1
         
         function inst.components.projectile:Hit(target)
+            dprint("/AAT projectile:Hit")
             if target == self.owner and target.components.catcher then
+                dprint("/AAT target is owner, overriding Hit behaviour")
                 if boomerang_catch == "drop" and self.homing then
                     self:SetHoming(false)
                     self._returned = true
@@ -416,6 +442,7 @@ if boomerang_catch then
                     target.components.catcher:PrepareToCatch()
                 end
             else
+                dprint("/AAT target is not owner, executing original Hit")
                 orig_Hit(self, target)
             end
         end
@@ -423,6 +450,7 @@ if boomerang_catch then
         function inst.components.projectile:OnUpdate(dt)
             orig_OnUpdate(self, dt)
             if self._returned and boomerang_catch == "drop" then
+                dprint("/AAT projectile:OnUpdate drop")
                 self._timeout = self._timeout - dt
                 if self._original_speed then
                     self.speed = (self._timeout / drop_timeout)^2 * self._original_speed
@@ -438,11 +466,13 @@ if boomerang_catch then
         end
         
         function inst.components.projectile:Catch(catcher)
+            dprint("/AAT projectile:Catch")
             if boomerang_catch == "drop" and self._returned then self:_ResetReturned() end
             orig_Catch(self, catcher)
         end
         
         function inst.components.projectile:_ResetReturned()
+            dprint("/AAT projectile:_ResetReturned")
             self._returned = false
             self._timeout = nil
             if not self.homing then self:SetHoming(true) end
