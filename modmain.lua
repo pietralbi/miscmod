@@ -105,7 +105,9 @@ if min_spacing then
     dprint("/AAT enabling CLOSER PLACEMENT")
     AddGamePostInit(function()
         for _, v in pairs(GLOBAL.GetAllRecipes()) do
-            v.min_spacing = min_spacing
+            local old_spacing = v.min_spacing
+            v.min_spacing = math.min(min_spacing, v.min_spacing)
+            dprint(string.format("/AAT %-30s %g -> %g", v.name, old_spacing, v.min_spacing))
         end
     end)
 end
@@ -482,4 +484,41 @@ if boomerang_catch then
             end
         end
     end)
+end
+
+-- RABBITS MAKE HOLES --
+if GetModConfigData("rabbit_hole") then
+    dprint("/AAT enabling RABBITS MAKE HOLES")
+    
+    -- Add MAKERABBITHOLE action
+    local MAKERABBITHOLE = GLOBAL.Action({},4, false, false, 0)
+    MAKERABBITHOLE.str = "Make Rabbit Hole"
+    MAKERABBITHOLE.id = "MAKERABBITHOLE"
+    MAKERABBITHOLE.fn = function(act)
+        dprint("/AAT MAKERABBITHOLE.fn")
+        if act.doer and act.doer.prefab == "rabbit" then
+            local rabbithole = SpawnPrefab("rabbithole")
+            local pt = act.doer:GetPosition()
+            rabbithole.Transform:SetPosition(pt.x, pt.y, pt.z)
+            rabbithole:PushEvent("confignewhome", {rabbit=act.doer})
+            return true
+        end
+    end
+    AddAction(MAKERABBITHOLE)
+
+    -- Modify rabbithole prefab
+    AddPrefabPostInit("rabbithole", function(inst)
+        local function confignewhome(inst, data)
+            if inst.spawner_config_task then inst.spawner_config_task:Cancel() end
+            if data.rabbit then inst.components.spawner:TakeOwnership(data.rabbit) end
+            inst.components.spawner:Configure( "rabbit", TUNING.RABBIT_RESPAWN_TIME)
+        end
+
+        inst:ListenForEvent("confignewhome", confignewhome)
+	    inst.spawner_config_task = inst:DoTaskInTime(1, function(inst)
+		    inst.components.spawner:Configure( "rabbit", TUNING.RABBIT_RESPAWN_TIME) 
+		    inst.spawner_config_task = nil
+        end)
+    end)
+
 end

@@ -3,7 +3,7 @@ name = "Miscellaneous tweaks"
 description = "Compilation of my script mods & tweaks, configurable"
 author = "Alberto Pietralunga"
 
-version = "1.1.4"
+version = "1.1.5"
 forumthread = ""
 
 api_version = 6
@@ -12,13 +12,10 @@ reign_of_giants_compatible  = true
 shipwrecked_compatible      = true
 hamlet_compatible           = true
 
--- Can specify a custom icon for this mod!
 icon_atlas = "modicon.xml"
 icon = "modicon.tex"
 
-
 -- Configs
-
 local function simpleopt(x)
 	return {description = x, data = x}
 end
@@ -26,6 +23,14 @@ end
 local function append(t, x)
 	t[#t + 1] = x
 	return t
+end
+
+local function prepend(t, x)
+    for i = #t, 1, -1 do
+        t[i + 1] = t[i]
+    end
+    t[1] = x
+    return t
 end
 
 local function range(a, b, step)
@@ -52,11 +57,11 @@ end
 for i = 1, #ci_opt_ext2 do
 	append(ci_opt, ci_opt_ext2[i])
 end
-ci_opt[1] = {description = "Off", data = false}
+ci_opt = prepend(ci_opt, {description = "Off", data = false})
 
 -- CLOSER PLACEMENT --
-local cp_opt = range(0.0, 3.2, 0.2)
-cp_opt[1] = {description = "Off", data = false}
+local cp_opt = range(0.0, 3.2, 0.1)
+cp_opt = prepend(cp_opt, {description = "Off", data = false})
 
 -- ATTACKS RESET --
 local ar_opt = range(0, 15, 1)
@@ -136,7 +141,7 @@ configuration_options =
 	    	{description = "Off", data = false},
 	    	{description = "On", data = true}
 	    },
-        default = false
+        default = true
     },
     {
         name = "attacks_reset",
@@ -170,8 +175,18 @@ configuration_options =
             {
                 description = "Auto",
                 data = "auto"
-            },
+            }
         },
         default = "drop",
-    }
+    },
+    {
+        name = "rabbit_hole",
+        label = "IGNORE / Rabbits make holes",
+        options =
+        {
+            {description = "Off", data = false},
+            {description = "On", data = true}
+        },
+        default = false,
+    },
 }
