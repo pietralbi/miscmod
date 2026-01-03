@@ -188,6 +188,6 @@ configuration_options =
             {description = "Off", data = false},
             {description = "On", data = true}
         },
-        default = false,
+        default = true,
     },
 }
