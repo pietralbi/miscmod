@@ -1,9 +1,11 @@
---Strings and Recipes;
+local GLOBAL = GLOBAL
 local STRINGS = GLOBAL.STRINGS
 local TUNING = GLOBAL.TUNING
 local hasROG = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.REIGN_OF_GIANTS)
 local hasSHIP = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.CAPY_DLC)
 local hasPORK = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.PORKLAND_DLC)
+local vanilla = not (hasROG or hasSHIP or hasPORK)
+local hasAnyDLC = hasROG or hasSHIP or hasPORK
 
 local DEBUG = false
 local _print = print
@@ -13,6 +15,41 @@ local function dprint(...)
     end
 end
 
+local function DumpBTNode(node, indent)
+    indent = indent or ""
+    if node == nil then
+        dprint(indent .. "<nil node>")
+        return
+    end
+
+    -- Helpful: class name (e.g. "PriorityNode", "ParallelNode", "ConditionNode", etc.)
+    local classname = (node.is_a and (
+        node:is_a(GLOBAL.PriorityNode) and "PriorityNode"
+        or node:is_a(GLOBAL.ParallelNodeAny) and "ParallelNodeAny"
+        or node:is_a(GLOBAL.ParallelNode) and "ParallelNode"
+        or node:is_a(GLOBAL.SequenceNode) and "SequenceNode"
+        or node:is_a(GLOBAL.SelectorNode) and "SelectorNode"
+        or node:is_a(GLOBAL.EventNode) and "EventNode"
+        or node:is_a(GLOBAL.ConditionNode) and "ConditionNode"
+        or node:is_a(GLOBAL.ActionNode) and "ActionNode"
+        or node:is_a(GLOBAL.DecoratorNode) and "DecoratorNode"
+    )) or "BehaviourNode"
+
+    -- node.name exists for all BehaviourNode-derived nodes
+    dprint(string.format("%s- %s  name='%s'  children=%s",
+        indent,
+        classname,
+        tostring(node.name),
+        node.children and tostring(#node.children) or "nil"
+    ))
+
+    if node.children then
+        for i, child in ipairs(node.children) do
+            dprint(string.format("%s  [%d]", indent, i))
+            DumpBTNode(child, indent .. "    ")
+        end
+    end
+end
 
 -- NO MOD WARNING --
 if GetModConfigData("mods_warning") then
@@ -354,13 +391,16 @@ if reset_attack_days then
 end
 
 -- F5 SAVE / F9 LOAD --
-if GetModConfigData("save_load") then
+local save_load = GetModConfigData("save_load")
+if save_load then
     dprint("/AAT enabling F5 SAVE / F9 LOAD")
     STRINGS.UI.SAVELOAD = {}
     STRINGS.UI.SAVELOAD.SAVETITLE = "Quicksave"
     STRINGS.UI.SAVELOAD.SAVEBODY = "Do you want to save the game?"
     STRINGS.UI.SAVELOAD.LOADTITLE = "Quickload"
     STRINGS.UI.SAVELOAD.LOADBODY = "Do you want to reload the latest save?"
+
+    local instant = save_load == "instant"
 
     AddSimPostInit(function()
         local function exit()
@@ -375,6 +415,10 @@ if GetModConfigData("save_load") then
         -- F5 Save
 	    GLOBAL.TheInput:AddKeyDownHandler(GLOBAL.KEY_F5, function()
             dprint("/AAT F5 quicksaving")
+            if instant then
+                GLOBAL.GetPlayer().components.autosaver:DoSave()
+                return
+            end
 		    if GLOBAL.inGamePlay and GLOBAL.GetPlayer() and not GLOBAL.IsPaused() then
                 GLOBAL.SetPause(true)
                 local PopupDialogScreen = GLOBAL.require("screens/popupdialog")
@@ -395,20 +439,24 @@ if GetModConfigData("save_load") then
         -- F9 Load
         GLOBAL.TheInput:AddKeyDownHandler(GLOBAL.KEY_F9, function()
             dprint("/AAT F9 quicksaving")
+            local function loadgame()
+                GLOBAL.TheFrontEnd:HideConsoleLog()
+                GLOBAL.TheSim:SetDebugRenderEnabled(false)
+
+                GLOBAL.GetPlayer().HUD:Hide()
+
+                GLOBAL.TheFrontEnd:Fade(false, 1, function()
+                GLOBAL.StartNextInstance({reset_action=GLOBAL.RESET_ACTION.LOAD_SLOT,
+                    save_slot=GLOBAL.SaveGameIndex:GetCurrentSaveSlot()}, true)
+                end)
+            end
+            if instant then
+                loadgame()
+                return
+            end
 		    if GLOBAL.inGamePlay and GLOBAL.GetPlayer() and not GLOBAL.IsPaused() then
                 GLOBAL.SetPause(true)
                 local PopupDialogScreen = GLOBAL.require("screens/popupdialog")
-                local function loadgame()
-                    GLOBAL.TheFrontEnd:HideConsoleLog()
-                    GLOBAL.TheSim:SetDebugRenderEnabled(false)
-
-                    GLOBAL.GetPlayer().HUD:Hide()
-
-                    GLOBAL.TheFrontEnd:Fade(false, 1, function()
-                        GLOBAL.StartNextInstance({reset_action=GLOBAL.RESET_ACTION.LOAD_SLOT,
-                                                  save_slot=GLOBAL.SaveGameIndex:GetCurrentSaveSlot()}, true)
-                    end)
-                end
 
             	GLOBAL.TheFrontEnd:PushScreen(PopupDialogScreen(
                     STRINGS.UI.SAVELOAD.LOADTITLE, STRINGS.UI.SAVELOAD.LOADBODY,
@@ -497,17 +545,61 @@ if GetModConfigData("rabbit_hole") then
     MAKERABBITHOLE.fn = function(act)
         dprint("/AAT MAKERABBITHOLE.fn")
         if act.doer and act.doer.prefab == "rabbit" then
-            local rabbithole = SpawnPrefab("rabbithole")
-            local pt = act.doer:GetPosition()
-            rabbithole.Transform:SetPosition(pt.x, pt.y, pt.z)
+            local rabbithole = GLOBAL.SpawnPrefab("rabbithole")
+            local pos = act.doer:GetPosition()
+            rabbithole.Transform:SetPosition(pos.x, pos.y, pos.z)
             rabbithole:PushEvent("confignewhome", {rabbit=act.doer})
+            act.doer.needs_home_time = nil
             return true
         end
     end
     AddAction(MAKERABBITHOLE)
 
+    -- Modify rabbit prefab
+    AddPrefabPostInit("rabbit", function(inst)
+        -- Edit ondrop function
+        local function ondrop(inst)
+            dprint("/AAT rabbit ondrop")
+        	inst.sg:GoToState("stunned")
+	        inst.CheckTransformState(inst)
+            if not (inst.components.homeseeker and inst.components.homeseeker.home and inst.components.homeseeker.home:IsValid()) and not GLOBAL.GetWorld():IsCave() then
+                inst.needs_home_time = GLOBAL.GetTime()
+            end
+            dprint("/AAT needs_home_time " .. inst.needs_home_time)
+        end
+
+        inst.components.inventoryitem:SetOnDroppedFn(function(inst)
+            if hasAnyDLC then
+                inst.components.perishable:StopPerishing()
+            end
+            ondrop(inst)
+        end)
+
+        -- Edit OnSave function
+        local orig_OnSave = inst.OnSave
+        inst.OnSave = function(inst, data)
+            dprint("/AAT rabbit OnSave")
+            orig_OnSave(inst, data)
+            data.needs_home_time = inst.needs_home_time and (GLOBAL.GetTime() - inst.needs_home_time) or nil
+        end
+
+        -- Edit OnLoad function
+        local orig_OnLoad = inst.OnLoad
+        inst.OnLoad = function(inst, data)
+            dprint("/AAT rabbit OnLoad")
+            orig_OnLoad(inst, data)
+            if data then
+                inst.needs_home_time = data.needs_home_time and -data.needs_home_time or nil
+            end
+        end
+
+        -- Add make_home_delay
+        inst.make_home_delay = math.random(5,10)
+    end)
+
     -- Modify rabbithole prefab
     AddPrefabPostInit("rabbithole", function(inst)
+        -- Edit confignewhome and ownership events
         local function confignewhome(inst, data)
             if inst.spawner_config_task then inst.spawner_config_task:Cancel() end
             if data.rabbit then inst.components.spawner:TakeOwnership(data.rabbit) end
@@ -515,10 +607,90 @@ if GetModConfigData("rabbit_hole") then
         end
 
         inst:ListenForEvent("confignewhome", confignewhome)
-	    inst.spawner_config_task = inst:DoTaskInTime(1, function(inst)
-		    inst.components.spawner:Configure( "rabbit", TUNING.RABBIT_RESPAWN_TIME) 
-		    inst.spawner_config_task = nil
-        end)
+	    -- inst.spawner_config_task = inst:DoTaskInTime(1, function(inst)
+		--     inst.components.spawner:Configure( "rabbit", TUNING.RABBIT_RESPAWN_TIME)
+		--     inst.spawner_config_task = nil
+        -- end)
+
+        -- Edit dig_up function
+        local function dig_up(inst, chopper)
+            dprint("/AAT rabbithole dig_up")
+            if inst.components.spawner.child and not inst.components.spawner.child:HasTag("INLIMBO") then
+                inst.components.spawner.child.needs_home_time = GLOBAL.GetTime()
+            end
+            if inst.components.spawner:IsOccupied() then
+                inst.components.spawner:ReleaseChild()
+                inst.components.spawner.child.needs_home_time = GLOBAL.GetTime()
+            end
+            inst:Remove()
+        end
+        inst.components.workable:SetOnFinishCallback(dig_up)
     end)
+
+    -- Modify rabbitbrain
+    AddBrainPostInit("rabbitbrain", function(self)
+        local function ShouldMakeHome(inst)
+            local make_home = false
+            if not (inst.components.homeseeker and inst.components.homeseeker.home and inst.components.homeseeker.home:IsValid()) then
+                make_home = true
+            end
+            make_home = make_home and (inst.needs_home_time and (GLOBAL.GetTime() - inst.needs_home_time > inst.make_home_delay))
+            dprint("/AAT rabbit make_home: " .. tostring(make_home))
+            return make_home
+        end
+
+        local function MakeNewHomeAction(inst)
+            dprint("/AAT MakeNewHomeAction")
+            local angle = math.random(0,360)
+            local offset = GLOBAL.FindGroundOffset(inst:GetPosition(), angle*GLOBAL.DEGREES, math.random(5,15), 120, false, false)
+            return GLOBAL.BufferedAction(inst, nil, GLOBAL.ACTIONS.MAKERABBITHOLE, nil, inst:GetPosition() + offset)
+        end
+
+        if self.bt and self.bt.root and self.bt.root.children then
+            local makehome_node = GLOBAL.WhileNode(
+                    function() return ShouldMakeHome(self.inst) end, "HomeDugUp",
+                    GLOBAL.DoAction(self.inst, MakeNewHomeAction, "make home", false)
+            )
+
+            table.insert(self.bt.root.children, 4, makehome_node)
+            
+            if DEBUG then
+                dprint("==== RABBIT BT DUMP ====")
+                DumpBTNode(self.bt.root, "/AAT ")
+            end
+        end
+    end)
+
+    -- Add SG ActionHandler
+    AddStategraphActionHandler("rabbit", GLOBAL.ActionHandler(GLOBAL.ACTIONS.MAKERABBITHOLE, "make_rabbithole"))
+
+    -- Add SG State
+    AddStategraphState("rabbit",
+        GLOBAL.State{
+        name = "make_rabbithole",
+        tags = {"busy"},
+        onenter = function(inst, playanim)
+            inst.data.donelooking = nil
+            inst.Physics:Stop()
+            inst.AnimState:PlayAnimation("lookdown_pre")
+            inst.AnimState:PushAnimation("lookdown_loop", true)
+            inst.sg:SetTimeout(1 + math.random()*1)
+
+        end,
+        ontimeout = function(inst)
+            inst.data.donelooking = true
+            inst.AnimState:PlayAnimation("lookdown_pst")
+        end,
+        events=
+        {
+            GLOBAL.EventHandler("animover", function(inst, data)
+                if inst.data.donelooking then
+                    inst:PerformBufferedAction()
+                    inst.SoundEmitter:PlaySound(inst.sounds.hurt)
+                    inst.sg:GoToState("idle")
+                end
+            end),
+        },
+    })
 
 end

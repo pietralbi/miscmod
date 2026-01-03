@@ -155,7 +155,8 @@ configuration_options =
         options =
 	    {
 	    	{description = "Off", data = false},
-	    	{description = "On", data = true}
+	    	{description = "On", data = true},
+            {description = "No popup", data = "instant"}
 	    },
         default = true
     },
@@ -181,7 +182,7 @@ configuration_options =
     },
     {
         name = "rabbit_hole",
-        label = "IGNORE / Rabbits make holes",
+        label = "Rabbits make holes",
         options =
         {
             {description = "Off", data = false},
