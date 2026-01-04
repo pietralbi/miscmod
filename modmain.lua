@@ -537,7 +537,6 @@ end
 -- RABBITS MAKE HOLES --
 if GetModConfigData("rabbit_hole") then
     dprint("/AAT enabling RABBITS MAKE HOLES")
-    
     -- Add MAKERABBITHOLE action
     local MAKERABBITHOLE = GLOBAL.Action({},4, false, false, 0)
     MAKERABBITHOLE.str = "Make Rabbit Hole"
