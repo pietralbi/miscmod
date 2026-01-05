@@ -1,17 +1,20 @@
-local GLOBAL = GLOBAL
+-- UTILS
 local STRINGS = GLOBAL.STRINGS
 local TUNING = GLOBAL.TUNING
 local hasROG = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.REIGN_OF_GIANTS)
 local hasSHIP = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.CAPY_DLC)
 local hasPORK = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.PORKLAND_DLC)
-local vanilla = not (hasROG or hasSHIP or hasPORK)
-local hasAnyDLC = hasROG or hasSHIP or hasPORK
+local enabledROG = GLOBAL.IsDLCEnabled(GLOBAL.REIGN_OF_GIANTS)
+local enabledSHIP = GLOBAL.rawget(GLOBAL, "CAPY_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.CAPY_DLC)
+local enabledPORK = GLOBAL.rawget(GLOBAL, "PORKLAND_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.PORKLAND_DLC)
+local enabledAnyDLC = enabledROG or enabledSHIP or enabledPORK
+local vanilla = not enabledAnyDLC
 
-local DEBUG = false
-local _print = print
+DEBUG = false
+
 local function dprint(...)
     if DEBUG then
-        _print(...)
+        print(...)
     end
 end
 
@@ -22,7 +25,6 @@ local function DumpBTNode(node, indent)
         return
     end
 
-    -- Helpful: class name (e.g. "PriorityNode", "ParallelNode", "ConditionNode", etc.)
     local classname = (node.is_a and (
         node:is_a(GLOBAL.PriorityNode) and "PriorityNode"
         or node:is_a(GLOBAL.ParallelNodeAny) and "ParallelNodeAny"
@@ -35,8 +37,8 @@ local function DumpBTNode(node, indent)
         or node:is_a(GLOBAL.DecoratorNode) and "DecoratorNode"
     )) or "BehaviourNode"
 
-    -- node.name exists for all BehaviourNode-derived nodes
-    dprint(string.format("%s- %s  name='%s'  children=%s",
+    dprint(string.format(
+        "%s- %s  name='%s'  children=%s",
         indent,
         classname,
         tostring(node.name),
@@ -86,12 +88,12 @@ if GetModConfigData("floral_repair") then
     AddPrefabPostInit("hambat", NikuRepairInit)
     AddPrefabPostInit("flowerhat", HanaRepairInit)
     AddPrefabPostInit("grass_umbrella", HanaRepairInit)
-    if hasROG or hasSHIP then
+    if enabledAnyDLC then
         AddPrefabPostInit("watermelonhat", SuikaRepairInit)
         AddPrefabPostInit("hawaiianshirt", HanaRepairInit)
-        if hasSHIP then
-            AddPrefabPostInit("palmleaf_umbrella", HanaRepairInit)
-        end
+    end
+    if enabledSHIP or enabledPORK then
+        AddPrefabPostInit("palmleaf_umbrella", HanaRepairInit)
     end
 
     -- Inits adding repairer component
@@ -128,11 +130,9 @@ if GetModConfigData("floral_repair") then
     AddPrefabPostInit("meat", MeatRepairInit)
     AddPrefabPostInit("smallmeat", MorselRepairInit)
     AddPrefabPostInit("drumstick", MorselRepairInit)
-    if hasROG or hasSHIP then
+    if enabledAnyDLC then
         AddPrefabPostInit("watermelon", MelonRepairInit)
-        if hasROG then
-            AddPrefabPostInit("cactus_flower", CactusRepairInit)
-        end
+        AddPrefabPostInit("cactus_flower", CactusRepairInit)
     end
 end
 
@@ -568,7 +568,7 @@ if GetModConfigData("rabbit_hole") then
         end
 
         inst.components.inventoryitem:SetOnDroppedFn(function(inst)
-            if hasAnyDLC then
+            if enabledAnyDLC then
                 inst.components.perishable:StopPerishing()
             end
             ondrop(inst)
