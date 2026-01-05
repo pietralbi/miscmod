@@ -10,7 +10,7 @@ local enabledPORK = GLOBAL.rawget(GLOBAL, "PORKLAND_DLC") and GLOBAL.IsDLCEnable
 local enabledAnyDLC = enabledROG or enabledSHIP or enabledPORK
 local vanilla = not enabledAnyDLC
 
-DEBUG = false
+local DEBUG = false
 
 local function dprint(...)
     if DEBUG then
