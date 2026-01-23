@@ -271,47 +271,50 @@ if reset_attack_days then
     end)
 
     -- Replace FrogRain ListenForEvent "rainstart"
-    AddPrefabPostInit("forest", function(inst)
-        dprint("/AAT forest PostInit")
-        local FrogRain = inst.components.frograin
-        if not FrogRain then return end
-        FrogRain.frogcap = 9007199254740991    -- Remove frog cap
-        local function FrogRainListener()
-            if GLOBAL.SaveGameIndex:GetCurrentMode() ~= "adventure" then
-                local day = GLOBAL.GetClock():GetNumCycles()
-                day = day % reset_attack_days
-                local min = GLOBAL.Lerp(TUNING.FROG_RAIN_LOCAL_MIN_EARLY, TUNING.FROG_RAIN_LOCAL_MIN_LATE, day/100)
-                local max = GLOBAL.Lerp(TUNING.FROG_RAIN_LOCAL_MAX_EARLY, TUNING.FROG_RAIN_LOCAL_MAX_LATE, day/100)
-                min = math.clamp(min, TUNING.FROG_RAIN_LOCAL_MIN_EARLY, TUNING.FROG_RAIN_LOCAL_MIN_LATE)
-                max = math.clamp(max, TUNING.FROG_RAIN_LOCAL_MAX_EARLY, TUNING.FROG_RAIN_LOCAL_MAX_LATE)
-                FrogRain.local_rain_max = math.random(min, max)
-            else
-                FrogRain.local_rain_max = math.random(TUNING.FROG_RAIN_LOCAL_MIN_ADVENTURE, TUNING.FROG_RAIN_LOCAL_MAX_ADVENTURE)
-            end
-        end
-        -- Replace in event_listeners
-        local listeners = inst.event_listeners and inst.event_listeners["rainstart"]
-        if listeners and listeners[inst] then
-            for i, fn in ipairs(listeners[inst]) do
-                local info = GLOBAL.debug.getinfo(fn, "nS")
-                if info and info.source:find("frograin.lua", 1, true) then
-                    listeners[inst][i] = FrogRainListener
-                    break
+    -- but only for DLCs. Vanilla frog rain has no scaling with time
+    if enabledAnyDLC then
+        AddPrefabPostInit("forest", function(inst)
+            dprint("/AAT forest PostInit")
+            local FrogRain = inst.components.frograin
+            if not FrogRain then return end
+            FrogRain.frogcap = 9007199254740991    -- Remove frog cap
+            local function FrogRainListener()
+                if GLOBAL.SaveGameIndex:GetCurrentMode() ~= "adventure" then
+                    local day = GLOBAL.GetClock():GetNumCycles()
+                    day = day % reset_attack_days
+                    local min = GLOBAL.Lerp(TUNING.FROG_RAIN_LOCAL_MIN_EARLY, TUNING.FROG_RAIN_LOCAL_MIN_LATE, day/100)
+                    local max = GLOBAL.Lerp(TUNING.FROG_RAIN_LOCAL_MAX_EARLY, TUNING.FROG_RAIN_LOCAL_MAX_LATE, day/100)
+                    min = math.clamp(min, TUNING.FROG_RAIN_LOCAL_MIN_EARLY, TUNING.FROG_RAIN_LOCAL_MIN_LATE)
+                    max = math.clamp(max, TUNING.FROG_RAIN_LOCAL_MAX_EARLY, TUNING.FROG_RAIN_LOCAL_MAX_LATE)
+                    FrogRain.local_rain_max = math.random(min, max)
+                else
+                    FrogRain.local_rain_max = math.random(TUNING.FROG_RAIN_LOCAL_MIN_ADVENTURE, TUNING.FROG_RAIN_LOCAL_MAX_ADVENTURE)
                 end
             end
-        end
-        -- Replace in event_listening
-        local listening = inst.event_listening and inst.event_listening["rainstart"]
-        if listening and listening[inst] then
-        for i, fn in ipairs(listening[inst]) do
-                local info = GLOBAL.debug.getinfo(fn, "nS")
-                if info and info.source:find("frograin.lua", 1, true) then
-                    listening[inst][i] = FrogRainListener
-                    break
+            -- Replace in event_listeners
+            local listeners = inst.event_listeners and inst.event_listeners["rainstart"]
+            if listeners and listeners[inst] then
+                for i, fn in ipairs(listeners[inst]) do
+                    local info = GLOBAL.debug.getinfo(fn, "nS")
+                    if info and info.source:find("frograin.lua", 1, true) then
+                        listeners[inst][i] = FrogRainListener
+                        break
+                    end
                 end
             end
-        end
-    end)
+            -- Replace in event_listening
+            local listening = inst.event_listening and inst.event_listening["rainstart"]
+            if listening and listening[inst] then
+            for i, fn in ipairs(listening[inst]) do
+                    local info = GLOBAL.debug.getinfo(fn, "nS")
+                    if info and info.source:find("frograin.lua", 1, true) then
+                        listening[inst][i] = FrogRainListener
+                        break
+                    end
+                end
+            end
+        end)
+    end
 
     -- Replace PeriodicThreat worm data on AddThreat
     AddComponentPostInit("periodicthreat", function(inst)
@@ -691,5 +694,70 @@ if GetModConfigData("rabbit_hole") then
             end),
         },
     })
+end
 
+-- FERTILIZATION --
+if GetModConfigData("fertilization") then
+    dprint("/AAT enabling FERTILIZATION")
+end
+
+-- MANDRAKE RESPAWN --
+if GetModConfigData("mandrake_respawn") then
+    dprint("/AAT enabling MANDRAKE RESPAWN")
+
+    local function RespawnMandrake(user)
+        local pt = GLOBAL.Vector3(user.Transform:GetWorldPosition())
+
+        local offset
+        local spawn_pt
+        local max_tries = 20
+
+        for i = 1, max_tries do
+            local theta  = math.random() * 2 * math.pi
+            local radius = 100 + 100 * math.random()
+            offset = GLOBAL.FindWalkableOffset(pt, theta, radius, 12, true)
+            if offset ~= nil then
+                spawn_pt = pt + offset
+                break
+            end
+        end
+
+        if spawn_pt == nil then
+            spawn_pt = pt -- nothing found, spawn at player position
+        end
+
+        local mandrake = GLOBAL.SpawnPrefab("mandrake")
+        if mandrake then
+            mandrake.Physics:Teleport(spawn_pt:Get())
+            mandrake:FacePoint(pt)
+        end
+    end
+
+
+    local function OnEatenInit(inst)
+        local orig_oneaten = inst.components.edible.oneaten
+        inst.components.edible:SetOnEatenFn(function(inst, eater)
+            RespawnMandrake(eater)
+            orig_oneaten(inst, eater)
+        end)
+    end
+
+    local function OnEatenSoupInit(inst)
+        inst.components.edible:SetOnEatenFn(function(inst, eater)
+            RespawnMandrake(eater)
+        end)
+    end
+
+    local function OnFinishedInit(inst)
+        local orig_onfinished = inst.components.finiteuses.onfinished
+        inst.components.finiteuses:SetOnFinished(function(inst)
+            RespawnMandrake(inst.components.inventoryitem.owner)
+            orig_onfinished(inst)
+        end)
+    end
+
+    AddPrefabPostInit("mandrake", OnEatenInit)
+    AddPrefabPostInit("cookedmandrake", OnEatenInit)
+    AddPrefabPostInit("mandrakesoup", OnEatenSoupInit)
+    AddPrefabPostInit("panflute", OnFinishedInit)
 end

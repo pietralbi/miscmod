@@ -3,7 +3,7 @@ name = "Miscellaneous tweaks"
 description = "Compilation of my script mods & tweaks, configurable"
 author = "Alberto Pietralunga"
 
-version = "1.2.1"
+version = "1.2.2"
 forumthread = ""
 
 api_version = 6
@@ -187,6 +187,27 @@ configuration_options =
         {
             {description = "Off", data = false},
             {description = "On", data = true}
+        },
+        default = true,
+    },
+    {
+        name = "fertilization",
+        label = "Better fertilization",
+        options =
+        {
+            {description = "Off", data = false},
+            {description = "Improved", data = "improved"},
+            {description = "Infinite", data = "infinite"}
+        },
+        default = "improved",
+    },
+    {
+        name = "mandrake_respawn",
+        label = "Mandrake respawn",
+        options =
+        {
+            {description = "Off", data = false},
+            {description = "On", data = true},
         },
         default = true,
     },
