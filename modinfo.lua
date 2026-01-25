@@ -3,7 +3,7 @@ name = "Miscellaneous tweaks"
 description = "Compilation of my script mods & tweaks, configurable"
 author = "Alberto Pietralunga"
 
-version = "1.2.2"
+version = "1.2.3"
 forumthread = ""
 
 api_version = 6
@@ -79,7 +79,7 @@ configuration_options =
 {
 	{
         name = "mods_warning",
-        label = "Remove mods warning",
+        label = "1. Remove mods warning",
         options =
 	    {
 	    	{description = "Off", data = false},
@@ -89,13 +89,13 @@ configuration_options =
 	},
 	{
         name = "cave_insulation",
-        label = "Cave insulation (V:8)",
+        label = "2. Cave insulation (V:8)",
         options = ci_opt,
         default = 128
 	},
 	{
         name = "floral_repair",
-        label = "Floral & meat repair",
+        label = "3. Floral & meat repair",
         options =
 	    {
 	    	{description = "Off", data = false},
@@ -129,13 +129,13 @@ configuration_options =
     },
     {
         name = "close_placement",
-        label = "Closer spacing (V:3.2)",
+        label = "4. Closer spacing (V:3.2)",
         options = cp_opt,
         default = 1.2
     },
     {
         name = "dont_delete_save",
-        label = "Do not delete save",
+        label = "5. Do not delete save",
         options =
 	    {
 	    	{description = "Off", data = false},
@@ -145,13 +145,13 @@ configuration_options =
     },
     {
         name = "attacks_reset",
-        label = "Attacks reset",
+        label = "6. Attacks reset",
         options = ar_opt,
         default = 70
     },
     {
         name = "save_load",
-        label = "F5/F9 Save/Load",
+        label = "7. F5/F9 Save/Load",
         options =
 	    {
 	    	{description = "Off", data = false},
@@ -162,7 +162,7 @@ configuration_options =
     },
     {
         name = "boomerang_catch",
-        label = "Boomerang catch",
+        label = "8. Boomerang catch",
         options =
         {
             {
@@ -182,7 +182,7 @@ configuration_options =
     },
     {
         name = "rabbit_hole",
-        label = "Rabbits make holes",
+        label = "9. Rabbits make holes",
         options =
         {
             {description = "Off", data = false},
@@ -192,10 +192,10 @@ configuration_options =
     },
     {
         name = "fertilization",
-        label = "Better fertilization",
+        label = "10. Better fertilization",
         options =
         {
-            {description = "Off", data = false},
+            {description = "Bugfix only", data = false},
             {description = "Improved", data = "improved"},
             {description = "Infinite", data = "infinite"}
         },
@@ -203,7 +203,7 @@ configuration_options =
     },
     {
         name = "mandrake_respawn",
-        label = "Mandrake respawn",
+        label = "11. Mandrake respawn",
         options =
         {
             {description = "Off", data = false},

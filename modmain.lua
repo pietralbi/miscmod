@@ -1,16 +1,23 @@
 -- UTILS
 local STRINGS = GLOBAL.STRINGS
 local TUNING = GLOBAL.TUNING
-local hasROG = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.REIGN_OF_GIANTS)
-local hasSHIP = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.CAPY_DLC)
-local hasPORK = GLOBAL.TheSim:IsDLCInstalled(GLOBAL.PORKLAND_DLC)
 local enabledROG = GLOBAL.IsDLCEnabled(GLOBAL.REIGN_OF_GIANTS)
 local enabledSHIP = GLOBAL.rawget(GLOBAL, "CAPY_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.CAPY_DLC)
 local enabledPORK = GLOBAL.rawget(GLOBAL, "PORKLAND_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.PORKLAND_DLC)
 local enabledAnyDLC = enabledROG or enabledSHIP or enabledPORK
 local vanilla = not enabledAnyDLC
 
-local DEBUG = false
+local seg_time = 30
+local total_day_time = seg_time*16
+local day_segs = 10
+local dusk_segs = 4
+local night_segs = 2
+local day_time = seg_time * day_segs
+local dusk_time = seg_time * dusk_segs
+local night_time = seg_time * night_segs
+
+local MAX_INT = 2^53
+local DEBUG = true
 
 local function dprint(...)
     if DEBUG then
@@ -277,7 +284,7 @@ if reset_attack_days then
             dprint("/AAT forest PostInit")
             local FrogRain = inst.components.frograin
             if not FrogRain then return end
-            FrogRain.frogcap = 9007199254740991    -- Remove frog cap
+            FrogRain.frogcap = MAX_INT    -- Remove frog cap
             local function FrogRainListener()
                 if GLOBAL.SaveGameIndex:GetCurrentMode() ~= "adventure" then
                     local day = GLOBAL.GetClock():GetNumCycles()
@@ -637,7 +644,7 @@ if GetModConfigData("rabbit_hole") then
                 make_home = true
             end
             make_home = make_home and (inst.needs_home_time and (GLOBAL.GetTime() - inst.needs_home_time > inst.make_home_delay))
-            dprint("/AAT rabbit make_home: " .. tostring(make_home))
+            -- dprint("/AAT rabbit make_home: " .. tostring(make_home))
             return make_home
         end
 
@@ -696,9 +703,176 @@ if GetModConfigData("rabbit_hole") then
     })
 end
 
+
+-- FERTILIZATION Vanilla bugfix
+-- Replace inst.components.pickable.getregentimefn for berrybushes
+local function BerryBushTimeBugFix(inst)
+    if not inst.components.pickable then return end
+    inst.components.pickable.getregentimefn = function(inst)
+        dprint("/AAT getregentimefn called")
+        if inst.components.pickable then
+            local num_cycles_passed = math.max(inst.components.pickable.max_cycles - inst.components.pickable.cycles_left, 0)
+            local regentime = TUNING.BERRY_REGROW_TIME + TUNING.BERRY_REGROW_INCREASE*num_cycles_passed + math.random()*TUNING.BERRY_REGROW_VARIANCE
+            dprint("/AAT getregentimefn num_cycles_passed: " .. num_cycles_passed .. "\nregentime: " .. regentime)
+            return regentime
+        else
+            return TUNING.BERRY_REGROW_TIME
+        end
+    end
+end
+AddPrefabPostInit("berrybush", BerryBushTimeBugFix)
+AddPrefabPostInit("berrybush2", BerryBushTimeBugFix)
+
 -- FERTILIZATION --
-if GetModConfigData("fertilization") then
+local fertilization = GetModConfigData("fertilization")
+if fertilization then
     dprint("/AAT enabling FERTILIZATION")
+
+    -- Fertilize only once, no variance in growth time
+    if fertilization == "infinite" then
+        TUNING.BERRYBUSH_CYCLES = MAX_INT
+
+        local function OnPickedReset(inst, orig_onpickedfn)
+            inst.components.pickable.onpickedfn = function(inst, picker)
+                dprint("/AAT resetting pickable cycles")
+                inst.components.pickable.max_cycles = MAX_INT
+                inst.components.pickable.cycles_left = MAX_INT
+                orig_onpickedfn(inst, picker)
+            end
+        end
+
+        local function PickableInit(inst)
+            OnPickedReset(inst, inst.components.pickable.onpickedfn)
+            -- Override getregentimefn if exists (berrybushes)
+            if inst.components.pickable and inst.components.pickable.getregentimefn then
+                inst.components.pickable.getregentimefn = function(inst)
+                    return TUNING.BERRY_REGROW_TIME
+                end
+            end
+        end
+
+        AddPrefabPostInit("berrybush", PickableInit)
+        AddPrefabPostInit("berrybush2", PickableInit)
+        AddPrefabPostInit("grass", PickableInit)
+
+        if enabledSHIP or enabledPORK then
+            local function OnHackedReset(inst, orig_onhackedfn)
+                inst.components.hackable.onhackedfn = function(inst, hacker, hacksleft)
+                    if(hacksleft <= 0) then
+                        dprint("/AAT resetting hackable cycles")
+                        inst.components.hackable.max_cycles = MAX_INT
+                        inst.components.hackable.cycles_left = MAX_INT
+                    end
+                    orig_onhackedfn(inst, hacker, hacksleft)
+                end
+            end
+
+            local function HackableInit(inst)
+                OnHackedReset(inst, inst.components.hackable.onhackedfn)
+            end
+
+            AddPrefabPostInit("bambootree", HackableInit)
+            AddPrefabPostInit("bush_vine", HackableInit)
+            if enabledPORK then
+                AddPrefabPostInit("grass_tall", HackableInit)
+            end
+
+        end
+    -- Fertilization improves growth cycle and growth time
+    elseif fertilization == "improved" then
+        -- Replace Pickable:Fertilize
+        AddComponentPostInit("pickable", function(inst)
+            function inst:Fertilize(fertilizer, doer)
+                -- Vanilla branch
+                if vanilla then
+                    fertilizer:Remove()
+                    self.max_cycles = self.max_cycles + 1
+                    self.cycles_left = self.max_cycles
+                    self:MakeEmpty()
+                -- DLCs branch
+                else
+                    if self.inst.components.burnable ~= nil then
+                        self.inst.components.burnable:StopSmoldering()
+                    end
+
+                    if fertilizer.components.finiteuses then
+                        fertilizer.components.finiteuses:Use()
+                    else
+                        fertilizer.components.stackable:Get(1):Remove()
+                    end
+
+                    local fertilize_cycles = fertilizer.components.fertilizer ~= nil and fertilizer.components.fertilizer.withered_cycles or 0
+
+                    self.protected_cycles = (self.protected_cycles or 0) + fertilize_cycles
+
+                    if not self.highfertilizerconsumer then
+                        self.protected_cycles = math.max(self.protected_cycles, 0)
+                    end
+
+                    if self.withered then
+                        self:Rejuvenate(fertilizer)
+                        return
+                    end
+                    self.max_cycles = self.max_cycles + 1
+                    self.cycles_left = self.max_cycles
+                    self:MakeEmpty()
+                end
+            end
+        end)
+        -- Replace inst.components.pickable.getregentimefn for berrybushes
+        local BERRY_REGROW_AMP = 7*total_day_time
+        local BERRY_REGROW_FLOOR = TUNING.BERRY_REGROW_TIME
+        local BERRY_REGROW_SCATTER = 5*total_day_time
+
+        local function PickableRegenTimeInit(inst)
+            if not inst.components.pickable then return end
+            inst.components.pickable.getregentimefn = function(inst)
+                    local max_cycles = inst.components.pickable.max_cycles
+                    if max_cycles == nil or max_cycles <= 0 then
+                        return BERRY_REGROW_FLOOR
+                    end
+
+                    local cycles_left = inst.components.pickable.cycles_left
+                    local num_cycles_passed = math.max(max_cycles - cycles_left, 0)
+
+                    local x = num_cycles_passed / max_cycles
+                    -- regrowth time decreases with number of fertilizations
+                    local amp = BERRY_REGROW_AMP / (max_cycles ^ 1.5)
+                    -- smoothstep function
+                    local s = 1.0 - math.exp(-4.0 * x * x)
+                    -- positive-only noise, shrinking with max_cycles
+                    local noise = (BERRY_REGROW_SCATTER / max_cycles)^2 * math.random()
+
+                    return BERRY_REGROW_FLOOR + amp * s + noise
+            end
+        end
+        AddPrefabPostInit("berrybush", PickableRegenTimeInit)
+        AddPrefabPostInit("berrybush2", PickableRegenTimeInit)
+
+        if enabledSHIP or enabledPORK then
+            -- Replace Hackable:Fertilize
+            AddComponentPostInit("hackable", function(inst)
+                function inst:Fertilize(fertilizer)
+                    if self.inst.components.burnable then
+                        self.inst.components.burnable:StopSmoldering()
+                    end
+
+                    if fertilizer.components.finiteuses then
+                        fertilizer.components.finiteuses:Use()
+                    else
+                        fertilizer.components.stackable:Get(1):Remove()
+                    end
+                    self.max_cycles = self.max_cycles + 1
+                    self.cycles_left = self.max_cycles
+
+                    if self.withered or self.shouldwither then
+                        self:Rejuvenate(fertilizer)
+                    end
+                    self:MakeEmpty()
+                end
+            end)
+        end
+    end
 end
 
 -- MANDRAKE RESPAWN --
@@ -725,7 +899,8 @@ if GetModConfigData("mandrake_respawn") then
         if spawn_pt == nil then
             spawn_pt = pt -- nothing found, spawn at player position
         end
-
+        
+        dprint("/AAT spawining mandrake at " .. tostring(spawn_pt))
         local mandrake = GLOBAL.SpawnPrefab("mandrake")
         if mandrake then
             mandrake.Physics:Teleport(spawn_pt:Get())
