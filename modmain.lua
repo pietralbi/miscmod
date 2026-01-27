@@ -17,7 +17,7 @@ local dusk_time = seg_time * dusk_segs
 local night_time = seg_time * night_segs
 
 local MAX_INT = 2^53
-local DEBUG = true
+local DEBUG = false
 
 local function dprint(...)
     if DEBUG then
