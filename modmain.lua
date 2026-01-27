@@ -1,7 +1,6 @@
 -- UTILS
 local STRINGS = GLOBAL.STRINGS
 local TUNING = GLOBAL.TUNING
-local CONSTANTS = GLOBAL.CONSTANTS
 local enabledROG = GLOBAL.IsDLCEnabled(GLOBAL.REIGN_OF_GIANTS)
 local enabledSHIP = GLOBAL.rawget(GLOBAL, "CAPY_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.CAPY_DLC)
 local enabledPORK = GLOBAL.rawget(GLOBAL, "PORKLAND_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.PORKLAND_DLC)
@@ -704,15 +703,12 @@ if GetModConfigData("rabbit_hole") then
     })
 end
 
--- Pickable:Pick bugfix for vanilla
-
+-- Pickable:Pick bugfix for vanilla and DLCs
 local function PickablePickBugFix(inst)
     function inst:Pick(picker)
         if self.canbepicked and self.caninteractwith then
-            if self.transplanted then
-                if self.cycles_left ~= nil then
-                    self.cycles_left = self.cycles_left - 1
-                end
+            if self.transplanted and self.cycles_left ~= nil then
+                self.cycles_left = math.max(0, self.cycles_left - 1)
             end
 
             if enabledAnyDLC then
@@ -787,13 +783,17 @@ local function PickablePickBugFix(inst)
             end
 
             if can_regen then
-                -- Vanilla: use regentime
-                -- ROG: use regentime, unless IsSpring
-                if enabledROG and GLOBAL.GetSeasonManager():IsSpring() then
-                        self.regentime = self.baseregentime * TUNING.SPRING_GROWTH_MODIFIER
-                -- SHIP and PORK: use baseregentime and GetGrowthMod
+                -- Vanilla: use regentime if getregentimefn not exists
+                if vanilla then
+                    self.regentime = self.getregentimefn and self.getregentimefn(self.inst) or self.regentime
+                -- ROG: use baseregentime if getregentimefn not exists, unless IsSpring
+                elseif enabledROG and GLOBAL.GetSeasonManager():IsSpring() then
+                        local time = self.getregentimefn and self.getregentimefn(self.inst) or self.baseregentime
+                        self.regentime = time * TUNING.SPRING_GROWTH_MODIFIER
+                -- SHIP and PORK: use baseregentime if getregentimefn not exists and GetGrowthMod
                 elseif enabledSHIP or enabledPORK then
-                    self.regentime = self.baseregentime * self:GetGrowthMod()
+                    local time = self.getregentimefn and self.getregentimefn(self.inst) or self.baseregentime
+                    self.regentime = time * self:GetGrowthMod()
                 end
                 self.task = self.inst:DoTaskInTime(self.regentime, function(inst)
                     if inst.components.pickable then inst.components.pickable:Regen() end
@@ -835,7 +835,6 @@ if fertilization then
     AddPrefabPostInit("berrybush", BerryBushTimeBugFix)
     AddPrefabPostInit("berrybush2", BerryBushTimeBugFix)
     AddComponentPostInit("pickable", PickablePickBugFix)
-
 
     -- Fertilize only once, no variance in growth time
     elseif fertilization == "infinite" then
@@ -892,6 +891,9 @@ if fertilization then
     elseif fertilization == "improved" then
         -- Remove 1 cycle from berrybushes, as it is added at the first Fertilize
         TUNING.BERRYBUSH_CYCLES = TUNING.BERRYBUSH_CYCLES - 1
+        
+        -- Fix Pick not calling getregentimefn
+        AddComponentPostInit("pickable", PickablePickBugFix)
 
         -- Replace Pickable:Fertilize
         AddComponentPostInit("pickable", function(inst)
@@ -934,7 +936,7 @@ if fertilization then
             end
         end)
         -- Replace inst.components.pickable.getregentimefn for berrybushes
-        local BERRY_REGROW_AMP = 10
+        local BERRY_REGROW_AMP = 7
         local BERRY_REGROW_FLOOR = 3
         local BERRY_REGROW_SCATTER = 5
 
@@ -953,7 +955,7 @@ if fertilization then
 
                     local x = num_cycles_passed / max_cycles
                     -- regrowth time decreases with number of fertilizations
-                    local amp = BERRY_REGROW_AMP / (max_cycles ^ 1.5)
+                    local amp = (BERRY_REGROW_AMP / max_cycles) ^ 2
                     -- smoothstep function
                     local s = 1.0 - math.exp(-4.0 * x * x)
                     -- positive-only noise, shrinking with max_cycles
