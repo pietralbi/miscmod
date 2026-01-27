@@ -195,7 +195,8 @@ configuration_options =
         label = "10. Better fertilization",
         options =
         {
-            {description = "Bugfix only", data = false},
+            {description = "Off", data = false},
+            {description = "Bugfix only", data = "bugfix"},
             {description = "Improved", data = "improved"},
             {description = "Infinite", data = "infinite"}
         },

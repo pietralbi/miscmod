@@ -1,6 +1,7 @@
 -- UTILS
 local STRINGS = GLOBAL.STRINGS
 local TUNING = GLOBAL.TUNING
+local CONSTANTS = GLOBAL.CONSTANTS
 local enabledROG = GLOBAL.IsDLCEnabled(GLOBAL.REIGN_OF_GIANTS)
 local enabledSHIP = GLOBAL.rawget(GLOBAL, "CAPY_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.CAPY_DLC)
 local enabledPORK = GLOBAL.rawget(GLOBAL, "PORKLAND_DLC") and GLOBAL.IsDLCEnabled(GLOBAL.PORKLAND_DLC)
@@ -51,7 +52,7 @@ local function DumpBTNode(node, indent)
         tostring(node.name),
         node.children and tostring(#node.children) or "nil"
     ))
-
+    
     if node.children then
         for i, child in ipairs(node.children) do
             dprint(string.format("%s  [%d]", indent, i))
@@ -481,7 +482,7 @@ end
 -- BOOMERANG CATCH --
 local boomerang_catch = GetModConfigData("boomerang_catch")
 if boomerang_catch then
-    dprint("/AAT enabling BOOMERANG CATCH")
+    dprint("/AAT enabling BOOMERANG CATCH MODE: " .. boomerang_catch)
     AddPrefabPostInit("boomerang", function(inst)
         local orig_Hit = inst.components.projectile.Hit
         local orig_OnUpdate = inst.components.projectile.OnUpdate
@@ -663,10 +664,10 @@ if GetModConfigData("rabbit_hole") then
 
             table.insert(self.bt.root.children, 4, makehome_node)
             
-            if DEBUG then
-                dprint("==== RABBIT BT DUMP ====")
-                DumpBTNode(self.bt.root, "/AAT ")
-            end
+            -- if DEBUG then
+            --     dprint("==== RABBIT BT DUMP ====")
+            --     DumpBTNode(self.bt.root, "/AAT ")
+            -- end
         end
     end)
 
@@ -703,33 +704,139 @@ if GetModConfigData("rabbit_hole") then
     })
 end
 
+-- Pickable:Pick bugfix for vanilla
 
--- FERTILIZATION Vanilla bugfix
--- Replace inst.components.pickable.getregentimefn for berrybushes
-local function BerryBushTimeBugFix(inst)
-    if not inst.components.pickable then return end
-    inst.components.pickable.getregentimefn = function(inst)
-        dprint("/AAT getregentimefn called")
-        if inst.components.pickable then
-            local num_cycles_passed = math.max(inst.components.pickable.max_cycles - inst.components.pickable.cycles_left, 0)
-            local regentime = TUNING.BERRY_REGROW_TIME + TUNING.BERRY_REGROW_INCREASE*num_cycles_passed + math.random()*TUNING.BERRY_REGROW_VARIANCE
-            dprint("/AAT getregentimefn num_cycles_passed: " .. num_cycles_passed .. "\nregentime: " .. regentime)
-            return regentime
-        else
-            return TUNING.BERRY_REGROW_TIME
+AddComponentPostInit("pickable", function(self)
+    function self:Pick(picker)
+        if self.canbepicked and self.caninteractwith then
+            if self.transplanted then
+                if self.cycles_left ~= nil then
+                    self.cycles_left = self.cycles_left - 1
+                end
+            end
+
+            if enabledAnyDLC then
+                if self.protected_cycles ~= nil then
+                    self.protected_cycles = self.protected_cycles - 1
+                    if self.protected_cycles <= 0 then
+                        if not self:IsWithered() then
+                            self:MakeWitherable()
+                        end
+                    end
+                end
+            end
+
+            local loot = nil
+            if picker and picker.components.inventory and self.product then
+                loot = GLOBAL.SpawnPrefab(self.product)
+
+                if loot then
+                    if self.numtoharvest > 1 and loot.components.stackable then
+                        loot.components.stackable:SetStackSize(self.numtoharvest)
+                    end
+
+                    -- Moisture handling, ROG
+                    if enabledROG then
+                        local targetMoisture = 0
+
+                        if self.inst.components.moisturelistener then
+                            targetMoisture = self.inst.components.moisturelistener:GetMoisture()
+                        elseif self.inst.components.moisture then
+                            targetMoisture = self.inst.components.moisture:GetMoisture()
+                        else
+                            targetMoisture = GLOBAL.GetWorld().components.moisturemanager:GetWorldMoisture()
+                        end
+
+                        loot.targetMoisture = targetMoisture
+                        loot:DoTaskInTime(2*GLOBAL.FRAMES, function()
+                            if loot.components.moisturelistener then 
+                                loot.components.moisturelistener.moisture = loot.targetMoisture
+                                loot.targetMoisture = nil
+                                loot.components.moisturelistener:DoUpdate()
+                            end
+                        end)
+                    -- Moisture handling, SHIP and PORKLAND
+                    elseif enabledSHIP or enabledPORK then
+                        self.inst:ApplyInheritedMoisture(loot)
+                    end
+
+                    picker:PushEvent("picksomething", {object = self.inst, loot= loot})
+                    picker.components.inventory:GiveItem(loot, nil, GLOBAL.Vector3(GLOBAL.TheSim:GetScreenPos(self.inst.Transform:GetWorldPosition())))
+                end
+            end
+
+            if self.onpickedfn then
+                self.onpickedfn(self.inst, picker, loot)
+            end
+            self.canbepicked = false
+            if enabledAnyDLC then
+                self.hasbeenpicked = true
+            end
+
+            local can_regen = not self.paused and (self.cycles_left == nil or self.cycles_left > 0)
+            -- Vanilla: check on regentime only
+            if vanilla then
+                can_regen = can_regen and self.regentime
+            -- DLCs: also check withered and baseregentime
+            elseif enabledAnyDLC then 
+                can_regen = can_regen and not self.withered and self.baseregentime
+                -- PORK: also check inst:IsValid()
+                if enabledPORK then
+                    can_regen = can_regen and self.inst:IsValid()
+                end
+            end
+
+            if can_regen then
+                -- Vanilla: use regentime
+                -- ROG: use regentime, unless IsSpring
+                if enabledROG and GLOBAL.GetSeasonManager():IsSpring() then
+                        self.regentime = self.baseregentime * TUNING.SPRING_GROWTH_MODIFIER
+                -- SHIP and PORK: use baseregentime and GetGrowthMod
+                elseif enabledSHIP or enabledPORK then
+                    self.regentime = self.baseregentime * self:GetGrowthMod()
+                end
+                self.task = self.inst:DoTaskInTime(self.regentime, function(inst)
+                    if inst.components.pickable then inst.components.pickable:Regen() end
+                end, "regen")
+                self.targettime = GLOBAL.GetTime() + self.regentime
+            end
+
+            local pickeddata = { picker = picker, loot = loot }
+            if enabledAnyDLC then
+                pickeddata.plant = self.inst
+            end
+            self.inst:PushEvent("picked", pickeddata)
         end
     end
-end
-AddPrefabPostInit("berrybush", BerryBushTimeBugFix)
-AddPrefabPostInit("berrybush2", BerryBushTimeBugFix)
+end)
 
 -- FERTILIZATION --
 local fertilization = GetModConfigData("fertilization")
 if fertilization then
-    dprint("/AAT enabling FERTILIZATION")
+    dprint("/AAT enabling FERTILIZATION MODE: " .. fertilization)
+    -- Vanilla bugfix
+    if fertilization == "bugfix" then
+    -- Replace inst.components.pickable.getregentimefn for berrybushes
+    local function BerryBushTimeBugFix(inst)
+        if not inst.components.pickable then return end
+        inst.components.pickable.getregentimefn = function(inst)
+            dprint("/AAT getregentimefn called")
+            if inst.components.pickable then
+                local num_cycles_passed = math.max(inst.components.pickable.max_cycles - inst.components.pickable.cycles_left, 0)
+                local regentime = TUNING.BERRY_REGROW_TIME + TUNING.BERRY_REGROW_INCREASE*num_cycles_passed + math.random()*TUNING.BERRY_REGROW_VARIANCE
+                dprint("/AAT pickable.getregentimefn cycles: " .. num_cycles_passed .. "/" .. inst.components.pickable.max_cycles)
+                dprint("/AAT pickable.getregentimefn regentime / days: " .. regentime / total_day_time)
+                return regentime
+            else
+                return TUNING.BERRY_REGROW_TIME
+            end
+        end
+    end
+    AddPrefabPostInit("berrybush", BerryBushTimeBugFix)
+    AddPrefabPostInit("berrybush2", BerryBushTimeBugFix)
 
     -- Fertilize only once, no variance in growth time
-    if fertilization == "infinite" then
+    elseif fertilization == "infinite" then
         TUNING.BERRYBUSH_CYCLES = MAX_INT
 
         local function OnPickedReset(inst, orig_onpickedfn)
@@ -778,11 +885,16 @@ if fertilization then
             end
 
         end
+
     -- Fertilization improves growth cycle and growth time
     elseif fertilization == "improved" then
+        -- Remove 1 cycle from berrybushes, as it is added at the first Fertilize
+        TUNING.BERRYBUSH_CYCLES = TUNING.BERRYBUSH_CYCLES - 1
+
         -- Replace Pickable:Fertilize
         AddComponentPostInit("pickable", function(inst)
             function inst:Fertilize(fertilizer, doer)
+                dprint("/AAT Pickable:Fertilize")
                 -- Vanilla branch
                 if vanilla then
                     fertilizer:Remove()
@@ -820,13 +932,15 @@ if fertilization then
             end
         end)
         -- Replace inst.components.pickable.getregentimefn for berrybushes
-        local BERRY_REGROW_AMP = 7*total_day_time
-        local BERRY_REGROW_FLOOR = TUNING.BERRY_REGROW_TIME
-        local BERRY_REGROW_SCATTER = 5*total_day_time
+        local BERRY_REGROW_AMP = 10
+        local BERRY_REGROW_FLOOR = 3
+        local BERRY_REGROW_SCATTER = 5
 
         local function PickableRegenTimeInit(inst)
             if not inst.components.pickable then return end
             inst.components.pickable.getregentimefn = function(inst)
+                    dprint("/AAT pickable.getregentimefn")
+
                     local max_cycles = inst.components.pickable.max_cycles
                     if max_cycles == nil or max_cycles <= 0 then
                         return BERRY_REGROW_FLOOR
@@ -842,8 +956,11 @@ if fertilization then
                     local s = 1.0 - math.exp(-4.0 * x * x)
                     -- positive-only noise, shrinking with max_cycles
                     local noise = (BERRY_REGROW_SCATTER / max_cycles)^2 * math.random()
-
-                    return BERRY_REGROW_FLOOR + amp * s + noise
+                    
+                    local regentime = (BERRY_REGROW_FLOOR + amp * s + noise) * total_day_time
+                    dprint("/AAT pickable.getregentimefn cycles: " .. cycles_left .. "/" .. max_cycles)
+                    dprint("/AAT pickable.getregentimefn regentime / days: " .. regentime / total_day_time)
+                    return regentime
             end
         end
         AddPrefabPostInit("berrybush", PickableRegenTimeInit)
@@ -853,6 +970,7 @@ if fertilization then
             -- Replace Hackable:Fertilize
             AddComponentPostInit("hackable", function(inst)
                 function inst:Fertilize(fertilizer)
+                    dprint("/AAT Hackable:Fertilize")
                     if self.inst.components.burnable then
                         self.inst.components.burnable:StopSmoldering()
                     end
