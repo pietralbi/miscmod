@@ -706,8 +706,8 @@ end
 
 -- Pickable:Pick bugfix for vanilla
 
-AddComponentPostInit("pickable", function(self)
-    function self:Pick(picker)
+local function PickablePickBugFix(inst)
+    function inst:Pick(picker)
         if self.canbepicked and self.caninteractwith then
             if self.transplanted then
                 if self.cycles_left ~= nil then
@@ -808,7 +808,7 @@ AddComponentPostInit("pickable", function(self)
             self.inst:PushEvent("picked", pickeddata)
         end
     end
-end)
+end
 
 -- FERTILIZATION --
 local fertilization = GetModConfigData("fertilization")
@@ -834,6 +834,8 @@ if fertilization then
     end
     AddPrefabPostInit("berrybush", BerryBushTimeBugFix)
     AddPrefabPostInit("berrybush2", BerryBushTimeBugFix)
+    AddComponentPostInit("pickable", PickablePickBugFix)
+
 
     -- Fertilize only once, no variance in growth time
     elseif fertilization == "infinite" then
