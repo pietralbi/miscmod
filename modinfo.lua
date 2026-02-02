@@ -3,7 +3,7 @@ name = "Miscellaneous tweaks"
 description = "Compilation of my script mods & tweaks, configurable"
 author = "Alberto Pietralunga"
 
-version = "1.3.0"
+version = "1.3.1"
 forumthread = ""
 
 api_version = 6
