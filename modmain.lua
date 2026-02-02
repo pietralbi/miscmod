@@ -146,13 +146,21 @@ end
 -- CLOSER PLACEMENT --
 local min_spacing = GetModConfigData("close_placement")
 if min_spacing then
-    dprint("/AAT enabling CLOSER PLACEMENT")
-    AddGamePostInit(function()
+    dprint("/AAT enabling CLOSER PLACEMENT: " .. tostring(min_spacing))
+
+    local function ChangeSpacing()
         for _, v in pairs(GLOBAL.GetAllRecipes()) do
             local old_spacing = v.min_spacing
-            v.min_spacing = math.min(min_spacing, v.min_spacing)
-            dprint(string.format("/AAT %-30s %g -> %g", v.name, old_spacing, v.min_spacing))
+            if old_spacing and type(old_spacing) == "number" then
+                v.min_spacing = math.min(min_spacing, v.min_spacing)
+                dprint(string.format("/AAT %-30s %g -> %g", v.name, old_spacing, v.min_spacing))
+            end
         end
+    end
+
+    AddSimPostInit(function()
+        -- Delayed so to capture mod added recipes
+        GLOBAL.scheduler:ExecuteInTime(0, ChangeSpacing)
     end)
 end
 
