@@ -1066,3 +1066,31 @@ if GetModConfigData("mandrake_respawn") then
     AddPrefabPostInit("mandrakesoup", OnEatenSoupInit)
     AddPrefabPostInit("panflute", OnFinishedInit)
 end
+
+-- FLINGOMATIC BEHAVIOR --
+local flingomatic = GetModConfigData("flingomatic")
+if flingomatic then
+    dprint("/AAT enabling FLINGOMATIC BEHAVIOR")
+    if flingomatic == "nofires" then
+        AddComponentPostInit("firedetector", function(FireDetector)
+            table.insert(FireDetector.NOTAGS, "campfire")
+        end)
+    elseif flingomatic == "noendo" then
+        AddComponentPostInit("firedetector", function(FireDetector)
+            table.insert(FireDetector.NOTAGS, "endofire")
+        end)
+        AddPrefabPostInit("coldfire", function(inst)
+            inst:AddTag("endofire")
+        end)
+        AddPrefabPostInit("coldfirepit", function(inst)
+            inst:AddTag("endofire")
+        end)
+        -- Deluxe firepits
+        AddPrefabPostInit("endo_firepit", function(inst)
+            inst:AddTag("endofire")
+        end)
+        AddPrefabPostInit("ice_star", function(inst)
+            inst:AddTag("endofire")
+        end)
+    end
+end

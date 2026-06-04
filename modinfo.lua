@@ -3,7 +3,7 @@ name = "Miscellaneous tweaks"
 description = "Compilation of my script mods & tweaks, configurable"
 author = "Alberto Pietralunga"
 
-version = "1.3.1"
+version = "1.4.1"
 forumthread = ""
 
 api_version = 6
@@ -211,5 +211,16 @@ configuration_options =
             {description = "On", data = true},
         },
         default = true,
+    },
+    {
+        name = "flingomatic",
+        label = "12. Flingomatic behavior",
+        options =
+        {
+            {description = "Off", data = false},
+            {description = "No endothermic", data = "noendo"},
+            {description = "No campfires", data = "nofires"},
+        },
+        default = "noendo",
     },
 }
